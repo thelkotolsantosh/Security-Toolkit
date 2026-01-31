@@ -1,0 +1,2088 @@
+================================================================================
+TOOLKIT - ALL SCRIPTS AND CODE
+================================================================================
+This document contains ALL Python scripts and code from the cybersecurity toolkit.
+Copy each file directly to your project.
+================================================================================
+FILE 1: setup.py
+================================================================================
+
+from setuptools import setup, find_packages
+
+with open('README.md', 'r', encoding='utf-8') as f:
+    long_description = f.read()
+
+with open('requirements.txt') as f:
+    requirements = f.read().splitlines()
+
+setup(
+    name='cybersecurity-toolkit',
+    version='1.0.0',
+    author='Security Development Team',
+    author_email='security@example.com',
+    description='A comprehensive toolkit for security professionals and penetration testers',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
+    url='https://github.com/yourusername/cybersecurity-toolkit',
+    packages=find_packages(),
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'Intended Audience :: System Administrators',
+        'Intended Audience :: Information Technology',
+        'Topic :: System :: Monitoring',
+        'Topic :: Security',
+        'License :: OSI Approved :: MIT License',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
+    ],
+    python_requires='>=3.8',
+    install_requires=requirements,
+    entry_points={
+        'console_scripts': [
+            'cst-scan=cybersecurity_toolkit.cli:port_scan',
+            'cst-analyze=cybersecurity_toolkit.cli:analyze_password',
+        ],
+    },
+    include_package_data=True,
+    zip_safe=False,
+    keywords='security cybersecurity penetration-testing scanner vulnerability',
+    project_urls={
+        'Bug Reports': 'https://github.com/yourusername/cybersecurity-toolkit/issues',
+        'Documentation': 'https://github.com/yourusername/cybersecurity-toolkit/docs',
+        'Source Code': 'https://github.com/yourusername/cybersecurity-toolkit',
+    },
+)
+
+================================================================================
+FILE 2: cybersecurity_toolkit/__init__.py
+================================================================================
+
+"""
+Cybersecurity Toolkit - A comprehensive Python security toolkit
+
+This package provides utilities for security professionals and penetration testers.
+"""
+
+__version__ = '1.0.0'
+__author__ = 'Security Development Team'
+__license__ = 'MIT'
+
+from cybersecurity_toolkit.network import PortScanner, IPUtils
+from cybersecurity_toolkit.crypto import HashUtils, SSLValidator
+from cybersecurity_toolkit.analysis import PasswordAnalyzer, LogParser
+
+__all__ = [
+    'PortScanner',
+    'IPUtils',
+    'HashUtils',
+    'SSLValidator',
+    'PasswordAnalyzer',
+    'LogParser',
+]
+
+================================================================================
+FILE 3: cybersecurity_toolkit/network/__init__.py
+================================================================================
+
+"""Network security utilities module"""
+
+from cybersecurity_toolkit.network.port_scanner import PortScanner
+from cybersecurity_toolkit.network.ip_utils import IPUtils
+
+__all__ = ['PortScanner', 'IPUtils']
+
+================================================================================
+FILE 4: cybersecurity_toolkit/network/port_scanner.py
+================================================================================
+
+"""Port scanning utilities for network reconnaissance"""
+
+import socket
+import threading
+from typing import Dict, List, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class PortScanner:
+    """Performs port scanning and service enumeration"""
+    
+    def __init__(self, timeout: int = 3):
+        """
+        Initialize PortScanner
+        
+        Args:
+            timeout: Socket timeout in seconds
+        """
+        self.timeout = timeout
+        self.results = {}
+        self.lock = threading.Lock()
+    
+    def scan_port(self, host: str, port: int) -> Tuple[int, str]:
+        """
+        Scan a single port on a target host
+        
+        Args:
+            host: Target IP or hostname
+            port: Port number to scan
+            
+        Returns:
+            Tuple of (port, status)
+        """
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(self.timeout)
+            result = sock.connect_ex((host, port))
+            sock.close()
+            
+            status = 'OPEN' if result == 0 else 'CLOSED'
+            return port, status
+        except socket.gaierror:
+            logger.error(f"Hostname {host} could not be resolved")
+            return port, 'ERROR'
+        except socket.error:
+            logger.error(f"Could not connect to {host}:{port}")
+            return port, 'ERROR'
+    
+    def scan(self, host: str, ports: List[int], threads: int = 10) -> Dict[int, str]:
+        """
+        Scan multiple ports with threading
+        
+        Args:
+            host: Target IP or hostname
+            ports: List of ports to scan
+            threads: Number of threads to use
+            
+        Returns:
+            Dictionary with port status
+        """
+        self.results = {}
+        
+        thread_pool = []
+        for port in ports:
+            if len(thread_pool) < threads:
+                t = threading.Thread(
+                    target=self._scan_and_store,
+                    args=(host, port)
+                )
+                t.daemon = True
+                t.start()
+                thread_pool.append(t)
+            else:
+                thread_pool[0].join()
+                thread_pool.pop(0)
+                t = threading.Thread(
+                    target=self._scan_and_store,
+                    args=(host, port)
+                )
+                t.daemon = True
+                t.start()
+                thread_pool.append(t)
+        
+        for t in thread_pool:
+            t.join()
+        
+        return self.results
+    
+    def _scan_and_store(self, host: str, port: int):
+        """Internal method to scan and store results"""
+        port_num, status = self.scan_port(host, port)
+        with self.lock:
+            self.results[port_num] = status
+    
+    def get_service_name(self, port: int) -> str:
+        """
+        Get common service name for a port
+        
+        Args:
+            port: Port number
+            
+        Returns:
+            Service name or 'unknown'
+        """
+        common_services = {
+            20: 'FTP-DATA',
+            21: 'FTP',
+            22: 'SSH',
+            23: 'TELNET',
+            25: 'SMTP',
+            53: 'DNS',
+            80: 'HTTP',
+            110: 'POP3',
+            143: 'IMAP',
+            443: 'HTTPS',
+            445: 'SMB',
+            3306: 'MySQL',
+            3389: 'RDP',
+            5432: 'PostgreSQL',
+            5900: 'VNC',
+            8080: 'HTTP-PROXY',
+            8443: 'HTTPS-ALT',
+            27017: 'MongoDB',
+            6379: 'Redis',
+        }
+        return common_services.get(port, 'unknown')
+    
+    def scan_range(self, host: str, start_port: int, end_port: int, 
+                   threads: int = 10) -> Dict[int, str]:
+        """
+        Scan a range of ports
+        
+        Args:
+            host: Target IP or hostname
+            start_port: Starting port number
+            end_port: Ending port number
+            threads: Number of threads
+            
+        Returns:
+            Dictionary with port status
+        """
+        ports = list(range(start_port, end_port + 1))
+        return self.scan(host, ports, threads)
+
+================================================================================
+FILE 5: cybersecurity_toolkit/network/ip_utils.py
+================================================================================
+
+"""IP address utilities and validation"""
+
+import socket
+import ipaddress
+from typing import Tuple, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class IPUtils:
+    """Utilities for IP address handling and validation"""
+    
+    @staticmethod
+    def is_valid_ip(ip_string: str) -> bool:
+        """
+        Validate if a string is a valid IP address
+        
+        Args:
+            ip_string: IP address string to validate
+            
+        Returns:
+            True if valid IP, False otherwise
+        """
+        try:
+            ipaddress.ip_address(ip_string)
+            return True
+        except ValueError:
+            return False
+    
+    @staticmethod
+    def is_ipv4(ip_string: str) -> bool:
+        """Check if IP is IPv4"""
+        try:
+            return isinstance(ipaddress.ip_address(ip_string), ipaddress.IPv4Address)
+        except ValueError:
+            return False
+    
+    @staticmethod
+    def is_ipv6(ip_string: str) -> bool:
+        """Check if IP is IPv6"""
+        try:
+            return isinstance(ipaddress.ip_address(ip_string), ipaddress.IPv6Address)
+        except ValueError:
+            return False
+    
+    @staticmethod
+    def hostname_to_ip(hostname: str) -> Optional[str]:
+        """
+        Resolve hostname to IP address
+        
+        Args:
+            hostname: Hostname to resolve
+            
+        Returns:
+            IP address or None if resolution fails
+        """
+        try:
+            return socket.gethostbyname(hostname)
+        except socket.gaierror:
+            logger.error(f"Could not resolve hostname: {hostname}")
+            return None
+    
+    @staticmethod
+    def ip_to_hostname(ip: str) -> Optional[str]:
+        """
+        Reverse resolve IP to hostname
+        
+        Args:
+            ip: IP address to resolve
+            
+        Returns:
+            Hostname or None if resolution fails
+        """
+        try:
+            hostname, _, _ = socket.gethostbyaddr(ip)
+            return hostname
+        except socket.herror:
+            logger.error(f"Could not resolve IP: {ip}")
+            return None
+    
+    @staticmethod
+    def is_private_ip(ip_string: str) -> bool:
+        """
+        Check if IP is in private range
+        
+        Args:
+            ip_string: IP address to check
+            
+        Returns:
+            True if private, False otherwise
+        """
+        try:
+            return ipaddress.ip_address(ip_string).is_private
+        except ValueError:
+            return False
+    
+    @staticmethod
+    def is_loopback(ip_string: str) -> bool:
+        """Check if IP is loopback address"""
+        try:
+            return ipaddress.ip_address(ip_string).is_loopback
+        except ValueError:
+            return False
+    
+    @staticmethod
+    def get_network_info(ip_with_mask: str) -> Optional[dict]:
+        """
+        Get network information from CIDR notation
+        
+        Args:
+            ip_with_mask: IP in CIDR notation (e.g., 192.168.1.0/24)
+            
+        Returns:
+            Dictionary with network info or None
+        """
+        try:
+            network = ipaddress.ip_network(ip_with_mask, strict=False)
+            return {
+                'network': str(network),
+                'netmask': str(network.netmask),
+                'broadcast': str(network.broadcast_address),
+                'first_host': str(network.network_address + 1),
+                'last_host': str(network.broadcast_address - 1),
+                'num_hosts': network.num_addresses - 2,
+            }
+        except ValueError as e:
+            logger.error(f"Invalid network address: {e}")
+            return None
+    
+    @staticmethod
+    def is_port_valid(port: int) -> bool:
+        """Check if port number is valid"""
+        return 1 <= port <= 65535
+    
+    @staticmethod
+    def parse_port_range(port_string: str) -> list:
+        """
+        Parse port range string (e.g., '80,443,8000-9000')
+        
+        Args:
+            port_string: Port string in various formats
+            
+        Returns:
+            List of port numbers
+        """
+        ports = []
+        for part in port_string.split(','):
+            part = part.strip()
+            if '-' in part:
+                start, end = part.split('-')
+                ports.extend(range(int(start), int(end) + 1))
+            else:
+                ports.append(int(part))
+        return sorted(list(set(ports)))
+
+================================================================================
+FILE 6: cybersecurity_toolkit/crypto/__init__.py
+================================================================================
+
+"""Cryptography and security utilities module"""
+
+from cybersecurity_toolkit.crypto.hash_utils import HashUtils
+from cybersecurity_toolkit.crypto.ssl_validator import SSLValidator
+
+__all__ = ['HashUtils', 'SSLValidator']
+
+================================================================================
+FILE 7: cybersecurity_toolkit/crypto/hash_utils.py
+================================================================================
+
+"""Hash computation and verification utilities"""
+
+import hashlib
+from typing import Dict, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class HashUtils:
+    """Utilities for hash computation and verification"""
+    
+    SUPPORTED_ALGORITHMS = ['md5', 'sha1', 'sha256', 'sha384', 'sha512', 'blake2b']
+    BLOCK_SIZE = 65536  # 64KB blocks
+    
+    @staticmethod
+    def compute_string_hash(data: str, algorithm: str = 'sha256') -> Optional[str]:
+        """
+        Compute hash of a string
+        
+        Args:
+            data: String to hash
+            algorithm: Hash algorithm to use
+            
+        Returns:
+            Hex digest or None if algorithm unsupported
+        """
+        if algorithm not in HashUtils.SUPPORTED_ALGORITHMS:
+            logger.error(f"Unsupported algorithm: {algorithm}")
+            return None
+        
+        try:
+            h = hashlib.new(algorithm)
+            h.update(data.encode('utf-8'))
+            return h.hexdigest()
+        except Exception as e:
+            logger.error(f"Hash computation error: {e}")
+            return None
+    
+    @staticmethod
+    def compute_file_hash(filepath: str, algorithm: str = 'sha256') -> Optional[str]:
+        """
+        Compute hash of a file
+        
+        Args:
+            filepath: Path to file
+            algorithm: Hash algorithm to use
+            
+        Returns:
+            Hex digest or None if error
+        """
+        if algorithm not in HashUtils.SUPPORTED_ALGORITHMS:
+            logger.error(f"Unsupported algorithm: {algorithm}")
+            return None
+        
+        try:
+            h = hashlib.new(algorithm)
+            with open(filepath, 'rb') as f:
+                while True:
+                    data = f.read(HashUtils.BLOCK_SIZE)
+                    if not data:
+                        break
+                    h.update(data)
+            return h.hexdigest()
+        except FileNotFoundError:
+            logger.error(f"File not found: {filepath}")
+            return None
+        except Exception as e:
+            logger.error(f"Hash computation error: {e}")
+            return None
+    
+    @staticmethod
+    def compute_all_hashes(data: str) -> Dict[str, str]:
+        """
+        Compute all supported hashes for a string
+        
+        Args:
+            data: String to hash
+            
+        Returns:
+            Dictionary of algorithm: hash pairs
+        """
+        hashes = {}
+        for algorithm in HashUtils.SUPPORTED_ALGORITHMS:
+            h = hashlib.new(algorithm)
+            h.update(data.encode('utf-8'))
+            hashes[algorithm] = h.hexdigest()
+        return hashes
+    
+    @staticmethod
+    def compute_file_all_hashes(filepath: str) -> Optional[Dict[str, str]]:
+        """
+        Compute all hashes for a file
+        
+        Args:
+            filepath: Path to file
+            
+        Returns:
+            Dictionary of algorithm: hash pairs or None
+        """
+        try:
+            hashes = {}
+            with open(filepath, 'rb') as f:
+                file_data = f.read()
+            
+            for algorithm in HashUtils.SUPPORTED_ALGORITHMS:
+                h = hashlib.new(algorithm)
+                h.update(file_data)
+                hashes[algorithm] = h.hexdigest()
+            return hashes
+        except FileNotFoundError:
+            logger.error(f"File not found: {filepath}")
+            return None
+        except Exception as e:
+            logger.error(f"Hash computation error: {e}")
+            return None
+    
+    @staticmethod
+    def verify_string_hash(data: str, expected_hash: str, 
+                          algorithm: str = 'sha256') -> bool:
+        """
+        Verify a string against its hash
+        
+        Args:
+            data: String to verify
+            expected_hash: Hash to compare against
+            algorithm: Hash algorithm
+            
+        Returns:
+            True if hash matches
+        """
+        computed = HashUtils.compute_string_hash(data, algorithm)
+        return computed == expected_hash.lower() if computed else False
+    
+    @staticmethod
+    def verify_file_hash(filepath: str, expected_hash: str, 
+                        algorithm: str = 'sha256') -> bool:
+        """
+        Verify a file against its hash
+        
+        Args:
+            filepath: Path to file
+            expected_hash: Hash to compare against
+            algorithm: Hash algorithm
+            
+        Returns:
+            True if hash matches
+        """
+        computed = HashUtils.compute_file_hash(filepath, algorithm)
+        return computed == expected_hash.lower() if computed else False
+    
+    @staticmethod
+    def get_supported_algorithms() -> list:
+        """Get list of supported hash algorithms"""
+        return HashUtils.SUPPORTED_ALGORITHMS.copy()
+
+================================================================================
+FILE 8: cybersecurity_toolkit/crypto/ssl_validator.py
+================================================================================
+
+"""SSL/TLS certificate validation and analysis"""
+
+import socket
+import ssl
+from datetime import datetime
+from typing import Dict, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class SSLValidator:
+    """Validates and analyzes SSL/TLS certificates"""
+    
+    def __init__(self, timeout: int = 5):
+        """
+        Initialize SSLValidator
+        
+        Args:
+            timeout: Socket timeout in seconds
+        """
+        self.timeout = timeout
+    
+    def validate(self, hostname: str, port: int = 443) -> Optional[Dict]:
+        """
+        Validate SSL certificate for a host
+        
+        Args:
+            hostname: Target hostname
+            port: Port number (default 443)
+            
+        Returns:
+            Dictionary with certificate info or None
+        """
+        try:
+            context = ssl.create_default_context()
+            with socket.create_connection((hostname, port), timeout=self.timeout) as sock:
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    cert = ssock.getpeercert()
+                    
+                    if not cert:
+                        return None
+                    
+                    return self._parse_certificate(cert, hostname)
+        except socket.gaierror:
+            logger.error(f"Could not resolve hostname: {hostname}")
+            return None
+        except socket.timeout:
+            logger.error(f"Connection timeout to {hostname}:{port}")
+            return None
+        except ssl.SSLError as e:
+            logger.error(f"SSL error for {hostname}: {e}")
+            return {
+                'hostname': hostname,
+                'port': port,
+                'is_valid': False,
+                'error': str(e),
+            }
+        except Exception as e:
+            logger.error(f"Certificate validation error: {e}")
+            return None
+    
+    def _parse_certificate(self, cert: dict, hostname: str) -> Dict:
+        """Parse certificate dictionary"""
+        try:
+            not_before = datetime.strptime(cert['notBefore'], '%b %d %H:%M:%S %Y %Z')
+            not_after = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y %Z')
+        except (ValueError, KeyError):
+            not_before = None
+            not_after = None
+        
+        is_valid = True
+        validity_issues = []
+        
+        if not_after:
+            if datetime.utcnow() > not_after:
+                is_valid = False
+                validity_issues.append('Certificate has expired')
+            elif (not_after - datetime.utcnow()).days < 30:
+                validity_issues.append(f'Certificate expires in {(not_after - datetime.utcnow()).days} days')
+        
+        if not_before:
+            if datetime.utcnow() < not_before:
+                is_valid = False
+                validity_issues.append('Certificate not yet valid')
+        
+        subject = dict(x[0] for x in cert.get('subject', ()))
+        issuer = dict(x[0] for x in cert.get('issuer', ()))
+        
+        return {
+            'hostname': hostname,
+            'is_valid': is_valid,
+            'subject': subject,
+            'issuer': issuer,
+            'version': cert.get('version'),
+            'serial_number': cert.get('serialNumber'),
+            'issued_date': str(not_before) if not_before else None,
+            'expiry_date': str(not_after) if not_after else None,
+            'validity_issues': validity_issues,
+            'san': self._get_san(cert),
+        }
+    
+    @staticmethod
+    def _get_san(cert: dict) -> list:
+        """Extract Subject Alternative Names"""
+        san_list = []
+        try:
+            san_extension = [ext[1] for ext in cert.get('subjectAltName', []) if ext[0] == 'DNS']
+            san_list = san_extension
+        except (IndexError, KeyError):
+            pass
+        return san_list
+    
+    def check_certificate_chain(self, hostname: str, port: int = 443) -> Optional[list]:
+        """
+        Get the certificate chain for a host
+        
+        Args:
+            hostname: Target hostname
+            port: Port number
+            
+        Returns:
+            List of certificates in chain
+        """
+        try:
+            context = ssl.create_default_context()
+            with socket.create_connection((hostname, port), timeout=self.timeout) as sock:
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    der_certs = ssock.getpeercert_chain()
+                    
+                    if not der_certs:
+                        return None
+                    
+                    certificates = []
+                    for der_cert in der_certs:
+                        x509 = ssl._ssl._test_decode_cert(der_cert)
+                        certificates.append(x509)
+                    
+                    return certificates
+        except Exception as e:
+            logger.error(f"Certificate chain error: {e}")
+            return None
+    
+    def get_protocol_version(self, hostname: str, port: int = 443) -> Optional[str]:
+        """
+        Get SSL/TLS protocol version
+        
+        Args:
+            hostname: Target hostname
+            port: Port number
+            
+        Returns:
+            Protocol version string
+        """
+        try:
+            context = ssl.create_default_context()
+            with socket.create_connection((hostname, port), timeout=self.timeout) as sock:
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    return ssock.version()
+        except Exception as e:
+            logger.error(f"Protocol detection error: {e}")
+            return None
+    
+    def get_cipher_suites(self, hostname: str, port: int = 443) -> Optional[Dict]:
+        """
+        Get cipher suites information
+        
+        Args:
+            hostname: Target hostname
+            port: Port number
+            
+        Returns:
+            Dictionary with cipher info
+        """
+        try:
+            context = ssl.create_default_context()
+            with socket.create_connection((hostname, port), timeout=self.timeout) as sock:
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    return {
+                        'cipher': ssock.cipher(),
+                        'protocol': ssock.version(),
+                    }
+        except Exception as e:
+            logger.error(f"Cipher suite detection error: {e}")
+            return None
+
+================================================================================
+FILE 9: cybersecurity_toolkit/analysis/__init__.py
+================================================================================
+
+"""Security analysis utilities module"""
+
+from cybersecurity_toolkit.analysis.password_analyzer import PasswordAnalyzer
+from cybersecurity_toolkit.analysis.log_parser import LogParser
+
+__all__ = ['PasswordAnalyzer', 'LogParser']
+
+================================================================================
+FILE 10: cybersecurity_toolkit/analysis/password_analyzer.py
+================================================================================
+
+"""Password security analysis utilities"""
+
+import re
+from typing import Dict, List
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class PasswordAnalyzer:
+    """Analyzes password strength and security"""
+    
+    # Common weak passwords
+    COMMON_PASSWORDS = {
+        'password', '123456', '12345678', 'qwerty', 'abc123',
+        'monkey', '1234567', 'letmein', 'trustno1', 'dragon',
+        'baseball', '111111', 'iloveyou', 'master', 'sunshine',
+        'ashley', 'bailey', 'passw0rd', 'shadow', '123123',
+    }
+    
+    # Keyboard patterns
+    KEYBOARD_PATTERNS = [
+        'qwerty', 'asdfgh', 'zxcvbn',
+        'qweasd', 'asdqwe', '123456', '654321',
+    ]
+    
+    def __init__(self):
+        """Initialize PasswordAnalyzer"""
+        self.min_length = 8
+        self.max_length = 128
+    
+    def analyze(self, password: str) -> Dict:
+        """
+        Analyze password strength
+        
+        Args:
+            password: Password to analyze
+            
+        Returns:
+            Dictionary with analysis results
+        """
+        score = 0
+        feedback = []
+        issues = []
+        
+        # Length check
+        length = len(password)
+        if length < self.min_length:
+            issues.append('Password too short (minimum 8 characters)')
+        elif length < 12:
+            score += 10
+        elif length < 16:
+            score += 15
+        else:
+            score += 20
+        
+        # Uppercase check
+        if re.search(r'[A-Z]', password):
+            score += 15
+        else:
+            feedback.append('Add uppercase letters')
+        
+        # Lowercase check
+        if re.search(r'[a-z]', password):
+            score += 15
+        else:
+            feedback.append('Add lowercase letters')
+        
+        # Digit check
+        if re.search(r'\d', password):
+            score += 15
+        else:
+            feedback.append('Add numbers')
+        
+        # Special character check
+        if re.search(r'[!@#$%^&*()_+\-=\[\]{};:\'",.<>?/\\|`~]', password):
+            score += 20
+        else:
+            feedback.append('Add special characters')
+        
+        # Check for common passwords
+        if password.lower() in self.COMMON_PASSWORDS:
+            score = 0
+            issues.append('This is a commonly used password')
+        
+        # Check for keyboard patterns
+        for pattern in self.KEYBOARD_PATTERNS:
+            if pattern in password.lower():
+                issues.append(f'Contains keyboard pattern: {pattern}')
+                score -= 10
+        
+        # Check for repeated characters
+        if re.search(r'(.)\1{2,}', password):
+            issues.append('Contains repeated characters')
+            score -= 5
+        
+        # Check for sequential numbers
+        if re.search(r'0123|1234|2345|3456|4567|5678|6789', password):
+            issues.append('Contains sequential numbers')
+            score -= 5
+        
+        # Check for sequential letters
+        if re.search(r'abcd|bcde|cdef|defg|efgh|fghi|ghij|hijk|ijkl|jklm|klmn|lmno|mnop|nopq|opqr|pqrs|qrst|rstu|stuv|tuvw|uvwx|vwxy|wxyz', password.lower()):
+            issues.append('Contains sequential letters')
+            score -= 5
+        
+        # Entropy calculation
+        entropy = self._calculate_entropy(password)
+        if entropy > 60:
+            score += 10
+        
+        # Normalize score
+        score = max(0, min(100, score))
+        
+        strength = self._get_strength_level(score)
+        
+        return {
+            'score': score,
+            'strength': strength,
+            'length': length,
+            'entropy': round(entropy, 2),
+            'feedback': feedback,
+            'issues': issues,
+            'has_uppercase': bool(re.search(r'[A-Z]', password)),
+            'has_lowercase': bool(re.search(r'[a-z]', password)),
+            'has_digits': bool(re.search(r'\d', password)),
+            'has_special_chars': bool(re.search(r'[!@#$%^&*()_+\-=\[\]{};:\'",.<>?/\\|`~]', password)),
+        }
+    
+    @staticmethod
+    def _calculate_entropy(password: str) -> float:
+        """Calculate password entropy"""
+        charset_size = 0
+        
+        if re.search(r'[a-z]', password):
+            charset_size += 26
+        if re.search(r'[A-Z]', password):
+            charset_size += 26
+        if re.search(r'\d', password):
+            charset_size += 10
+        if re.search(r'[!@#$%^&*()_+\-=\[\]{};:\'",.<>?/\\|`~]', password):
+            charset_size += 32
+        
+        if charset_size == 0:
+            return 0
+        
+        import math
+        return len(password) * math.log2(charset_size)
+    
+    @staticmethod
+    def _get_strength_level(score: int) -> str:
+        """Get strength level from score"""
+        if score < 20:
+            return 'Very Weak'
+        elif score < 40:
+            return 'Weak'
+        elif score < 60:
+            return 'Fair'
+        elif score < 80:
+            return 'Good'
+        else:
+            return 'Strong'
+    
+    def check_breach_wordlist(self, password: str, wordlist_path: str = None) -> bool:
+        """
+        Check if password exists in known breached passwords
+        
+        Args:
+            password: Password to check
+            wordlist_path: Path to wordlist file
+            
+        Returns:
+            True if password found in breaches
+        """
+        if wordlist_path is None:
+            # Check against built-in common passwords
+            return password.lower() in self.COMMON_PASSWORDS
+        
+        try:
+            with open(wordlist_path, 'r') as f:
+                for line in f:
+                    if line.strip().lower() == password.lower():
+                        return True
+            return False
+        except FileNotFoundError:
+            logger.error(f"Wordlist file not found: {wordlist_path}")
+            return False
+    
+    @staticmethod
+    def generate_recommendations(analysis: Dict) -> List[str]:
+        """
+        Generate specific improvement recommendations
+        
+        Args:
+            analysis: Analysis dictionary from analyze()
+            
+        Returns:
+            List of recommendations
+        """
+        recommendations = analysis.get('feedback', []).copy()
+        
+        if analysis['length'] < 12:
+            recommendations.append('Increase password length to at least 12 characters')
+        
+        if analysis['issues']:
+            recommendations.append('Avoid using patterns and common passwords')
+        
+        if not (analysis['has_uppercase'] and analysis['has_lowercase'] 
+                and analysis['has_digits'] and analysis['has_special_chars']):
+            recommendations.append('Use a mix of character types for better security')
+        
+        if analysis['score'] < 60:
+            recommendations.append('Consider using a password manager to generate secure passwords')
+        
+        return list(set(recommendations))
+
+================================================================================
+FILE 11: cybersecurity_toolkit/analysis/log_parser.py
+================================================================================
+
+"""Security log parsing and analysis utilities"""
+
+import re
+from datetime import datetime
+from typing import List, Dict, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class LogParser:
+    """Parses and analyzes security logs"""
+    
+    # Common log patterns
+    PATTERNS = {
+        'syslog': r'^(\w+ \d+ \d{2}:\d{2}:\d{2})\s+(\S+)\s+(\S+)\[(\d+)\]:\s*(.*)$',
+        'apache': r'^(\S+)\s+(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d+)\s+(\S+)(?:\s+"([^"]*)")?(?:\s+"([^"]*)")?$',
+        'auth': r'^(\w+ \d+ \d{2}:\d{2}:\d{2})\s+(\S+)\s+(\S+)\[(\d+)\]:\s*(.*)$',
+        'windows': r'^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\w+)\s+(\d+)\s+(.*)$',
+    }
+    
+    # Suspicious patterns
+    SUSPICIOUS_PATTERNS = {
+        'failed_auth': r'(authentication\s+failed|invalid\s+password|login\s+failed|access\s+denied)',
+        'injection': r'(union|select|insert|delete|drop|exec|script)',
+        'brute_force': r'(multiple\s+failed|repeated\s+attempts|lockout)',
+        'privilege_escalation': r'(sudo|setuid|privilege|elevated)',
+    }
+    
+    def __init__(self):
+        """Initialize LogParser"""
+        self.logs = []
+    
+    def parse_file(self, filepath: str, pattern_type: str = 'syslog') -> List[Dict]:
+        """
+        Parse log file
+        
+        Args:
+            filepath: Path to log file
+            pattern_type: Type of log pattern to use
+            
+        Returns:
+            List of parsed log entries
+        """
+        self.logs = []
+        
+        try:
+            with open(filepath, 'r') as f:
+                pattern = self.PATTERNS.get(pattern_type, self.PATTERNS['syslog'])
+                regex = re.compile(pattern)
+                
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    match = regex.match(line)
+                    if match:
+                        entry = self._create_log_entry(match, pattern_type)
+                        self.logs.append(entry)
+            
+            return self.logs
+        except FileNotFoundError:
+            logger.error(f"Log file not found: {filepath}")
+            return []
+        except Exception as e:
+            logger.error(f"Log parsing error: {e}")
+            return []
+    
+    def parse_lines(self, lines: List[str], pattern_type: str = 'syslog') -> List[Dict]:
+        """
+        Parse log lines
+        
+        Args:
+            lines: List of log lines
+            pattern_type: Type of log pattern
+            
+        Returns:
+            List of parsed log entries
+        """
+        self.logs = []
+        pattern = self.PATTERNS.get(pattern_type, self.PATTERNS['syslog'])
+        regex = re.compile(pattern)
+        
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            
+            match = regex.match(line)
+            if match:
+                entry = self._create_log_entry(match, pattern_type)
+                self.logs.append(entry)
+        
+        return self.logs
+    
+    @staticmethod
+    def _create_log_entry(match, pattern_type: str) -> Dict:
+        """Create log entry from regex match"""
+        groups = match.groups()
+        
+        if pattern_type == 'apache':
+            return {
+                'ip': groups[0],
+                'identity': groups[1],
+                'user': groups[2],
+                'timestamp': groups[3],
+                'request': groups[4],
+                'status_code': groups[5],
+                'response_size': groups[6],
+                'referrer': groups[7] if len(groups) > 7 else None,
+                'user_agent': groups[8] if len(groups) > 8 else None,
+            }
+        else:
+            return {
+                'timestamp': groups[0],
+                'hostname': groups[1] if len(groups) > 1 else None,
+                'process': groups[2] if len(groups) > 2 else None,
+                'pid': groups[3] if len(groups) > 3 else None,
+                'message': groups[4] if len(groups) > 4 else None,
+            }
+    
+    def find_suspicious_entries(self) -> Dict[str, List[Dict]]:
+        """
+        Find suspicious entries in parsed logs
+        
+        Returns:
+            Dictionary with suspicious entries by category
+        """
+        suspicious = {key: [] for key in self.SUSPICIOUS_PATTERNS.keys()}
+        
+        for entry in self.logs:
+            for category, pattern in self.SUSPICIOUS_PATTERNS.items():
+                # Check all string values in entry
+                for value in entry.values():
+                    if value and isinstance(value, str):
+                        if re.search(pattern, value, re.IGNORECASE):
+                            suspicious[category].append(entry)
+                            break
+        
+        return suspicious
+    
+    def get_failed_auth_attempts(self) -> List[Dict]:
+        """Get failed authentication attempts"""
+        pattern = self.SUSPICIOUS_PATTERNS['failed_auth']
+        failed = []
+        
+        for entry in self.logs:
+            message = entry.get('message', '')
+            if message and re.search(pattern, message, re.IGNORECASE):
+                failed.append(entry)
+        
+        return failed
+    
+    def get_ip_statistics(self) -> Dict[str, int]:
+        """Get statistics on IPs in logs"""
+        ip_stats = {}
+        
+        for entry in self.logs:
+            if 'ip' in entry and entry['ip']:
+                ip = entry['ip']
+                ip_stats[ip] = ip_stats.get(ip, 0) + 1
+        
+        return dict(sorted(ip_stats.items(), key=lambda x: x[1], reverse=True))
+    
+    def get_status_code_stats(self) -> Dict[str, int]:
+        """Get HTTP status code statistics"""
+        status_stats = {}
+        
+        for entry in self.logs:
+            if 'status_code' in entry and entry['status_code']:
+                code = entry['status_code']
+                status_stats[code] = status_stats.get(code, 0) + 1
+        
+        return dict(sorted(status_stats.items(), key=lambda x: x[1], reverse=True))
+    
+    def filter_by_date_range(self, start_date: str, end_date: str) -> List[Dict]:
+        """
+        Filter logs by date range (YYYY-MM-DD format)
+        
+        Args:
+            start_date: Start date
+            end_date: End date
+            
+        Returns:
+            Filtered log entries
+        """
+        try:
+            start = datetime.strptime(start_date, '%Y-%m-%d')
+            end = datetime.strptime(end_date, '%Y-%m-%d')
+        except ValueError:
+            logger.error("Invalid date format. Use YYYY-MM-DD")
+            return []
+        
+        filtered = []
+        for entry in self.logs:
+            timestamp_str = entry.get('timestamp', '')
+            # Simple date extraction - may need adjustment based on log format
+            if timestamp_str:
+                try:
+                    # Extract date portion
+                    date_part = timestamp_str.split()[0] if ' ' in timestamp_str else timestamp_str
+                    entry_date = datetime.strptime(date_part, '%Y-%m-%d')
+                    if start <= entry_date <= end:
+                        filtered.append(entry)
+                except ValueError:
+                    continue
+        
+        return filtered
+    
+    def filter_by_keyword(self, keyword: str, case_sensitive: bool = False) -> List[Dict]:
+        """
+        Filter logs by keyword
+        
+        Args:
+            keyword: Keyword to search for
+            case_sensitive: Whether search is case sensitive
+            
+        Returns:
+            Filtered log entries
+        """
+        filtered = []
+        
+        for entry in self.logs:
+            for value in entry.values():
+                if value and isinstance(value, str):
+                    if case_sensitive:
+                        if keyword in value:
+                            filtered.append(entry)
+                            break
+                    else:
+                        if keyword.lower() in value.lower():
+                            filtered.append(entry)
+                            break
+        
+        return filtered
+    
+    def get_summary(self) -> Dict:
+        """Get summary statistics of parsed logs"""
+        return {
+            'total_entries': len(self.logs),
+            'date_range': self._get_date_range(),
+            'unique_ips': len(self.get_ip_statistics()),
+            'status_codes': self.get_status_code_stats(),
+            'suspicious_entries': sum(len(v) for v in self.find_suspicious_entries().values()),
+        }
+    
+    def _get_date_range(self) -> Optional[Dict]:
+        """Get date range of logs"""
+        if not self.logs:
+            return None
+        
+        timestamps = [entry.get('timestamp') for entry in self.logs if entry.get('timestamp')]
+        if timestamps:
+            return {
+                'first_entry': timestamps[0],
+                'last_entry': timestamps[-1],
+            }
+        return None
+
+================================================================================
+FILE 12: cybersecurity_toolkit/utils/__init__.py
+================================================================================
+
+"""Utility functions module"""
+
+from cybersecurity_toolkit.utils.helpers import Logger, Config
+
+__all__ = ['Logger', 'Config']
+
+================================================================================
+FILE 13: cybersecurity_toolkit/utils/helpers.py
+================================================================================
+
+"""Helper utilities and configuration"""
+
+import logging
+import json
+from typing import Dict, Any, Optional
+from pathlib import Path
+
+
+class Logger:
+    """Logging configuration helper"""
+    
+    @staticmethod
+    def setup(name: str, level: str = 'INFO', 
+              log_file: Optional[str] = None) -> logging.Logger:
+        """
+        Setup logger
+        
+        Args:
+            name: Logger name
+            level: Logging level
+            log_file: Optional log file path
+            
+        Returns:
+            Configured logger instance
+        """
+        logger = logging.getLogger(name)
+        logger.setLevel(getattr(logging, level))
+        
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+        
+        # File handler
+        if log_file:
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        
+        return logger
+
+
+class Config:
+    """Configuration management"""
+    
+    def __init__(self, config_file: str = None):
+        """
+        Initialize Config
+        
+        Args:
+            config_file: Path to JSON config file
+        """
+        self.config = {}
+        if config_file and Path(config_file).exists():
+            self.load(config_file)
+    
+    def load(self, config_file: str) -> bool:
+        """Load config from JSON file"""
+        try:
+            with open(config_file, 'r') as f:
+                self.config = json.load(f)
+            return True
+        except (FileNotFoundError, json.JSONDecodeError):
+            return False
+    
+    def save(self, config_file: str) -> bool:
+        """Save config to JSON file"""
+        try:
+            with open(config_file, 'w') as f:
+                json.dump(self.config, f, indent=2)
+            return True
+        except Exception:
+            return False
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get config value"""
+        return self.config.get(key, default)
+    
+    def set(self, key: str, value: Any):
+        """Set config value"""
+        self.config[key] = value
+    
+    def to_dict(self) -> Dict:
+        """Get config as dictionary"""
+        return self.config.copy()
+
+================================================================================
+FILE 14: tests/__init__.py
+================================================================================
+
+"""Test suite for cybersecurity-toolkit"""
+
+================================================================================
+FILE 15: tests/test_port_scanner.py
+================================================================================
+
+"""Tests for port scanner module"""
+
+import pytest
+from cybersecurity_toolkit.network import PortScanner, IPUtils
+
+
+class TestPortScanner:
+    """Test cases for PortScanner"""
+    
+    def setup_method(self):
+        """Setup test fixtures"""
+        self.scanner = PortScanner(timeout=2)
+    
+    def test_scanner_initialization(self):
+        """Test scanner initialization"""
+        assert self.scanner.timeout == 2
+        assert self.scanner.results == {}
+    
+    def test_is_valid_port(self):
+        """Test port validation"""
+        assert IPUtils.is_port_valid(22)
+        assert IPUtils.is_port_valid(443)
+        assert IPUtils.is_port_valid(65535)
+        assert not IPUtils.is_port_valid(0)
+        assert not IPUtils.is_port_valid(65536)
+    
+    def test_get_service_name(self):
+        """Test service name resolution"""
+        assert self.scanner.get_service_name(22) == 'SSH'
+        assert self.scanner.get_service_name(80) == 'HTTP'
+        assert self.scanner.get_service_name(443) == 'HTTPS'
+        assert self.scanner.get_service_name(9999) == 'unknown'
+    
+    def test_parse_port_range(self):
+        """Test port range parsing"""
+        ports = IPUtils.parse_port_range('80,443,8000-8003')
+        assert 80 in ports
+        assert 443 in ports
+        assert 8000 in ports
+        assert 8003 in ports
+        assert len(ports) >= 5
+
+
+class TestIPUtils:
+    """Test cases for IPUtils"""
+    
+    def test_is_valid_ip(self):
+        """Test IP validation"""
+        assert IPUtils.is_valid_ip('192.168.1.1')
+        assert IPUtils.is_valid_ip('::1')
+        assert not IPUtils.is_valid_ip('256.1.1.1')
+        assert not IPUtils.is_valid_ip('invalid')
+    
+    def test_is_ipv4(self):
+        """Test IPv4 detection"""
+        assert IPUtils.is_ipv4('192.168.1.1')
+        assert not IPUtils.is_ipv4('::1')
+    
+    def test_is_ipv6(self):
+        """Test IPv6 detection"""
+        assert IPUtils.is_ipv6('::1')
+        assert not IPUtils.is_ipv6('192.168.1.1')
+    
+    def test_is_private_ip(self):
+        """Test private IP detection"""
+        assert IPUtils.is_private_ip('192.168.1.1')
+        assert IPUtils.is_private_ip('10.0.0.1')
+        assert IPUtils.is_private_ip('172.16.0.1')
+        assert not IPUtils.is_private_ip('8.8.8.8')
+    
+    def test_is_loopback(self):
+        """Test loopback detection"""
+        assert IPUtils.is_loopback('127.0.0.1')
+        assert IPUtils.is_loopback('::1')
+        assert not IPUtils.is_loopback('192.168.1.1')
+    
+    def test_get_network_info(self):
+        """Test network information extraction"""
+        info = IPUtils.get_network_info('192.168.1.0/24')
+        assert info is not None
+        assert info['network'] == '192.168.1.0/24'
+        assert info['broadcast'] == '192.168.1.255'
+        assert info['num_hosts'] == 254
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])
+
+================================================================================
+FILE 16: tests/test_hash_utils.py
+================================================================================
+
+"""Tests for hash utilities module"""
+
+import pytest
+import tempfile
+import os
+from cybersecurity_toolkit.crypto import HashUtils
+
+
+class TestHashUtils:
+    """Test cases for HashUtils"""
+    
+    def test_compute_string_hash_sha256(self):
+        """Test SHA256 hash computation"""
+        data = "test_string"
+        hash_result = HashUtils.compute_string_hash(data, 'sha256')
+        assert hash_result is not None
+        assert len(hash_result) == 64  # SHA256 is 64 hex characters
+    
+    def test_compute_string_hash_md5(self):
+        """Test MD5 hash computation"""
+        data = "test_string"
+        hash_result = HashUtils.compute_string_hash(data, 'md5')
+        assert hash_result is not None
+        assert len(hash_result) == 32  # MD5 is 32 hex characters
+    
+    def test_compute_string_hash_sha512(self):
+        """Test SHA512 hash computation"""
+        data = "test_string"
+        hash_result = HashUtils.compute_string_hash(data, 'sha512')
+        assert hash_result is not None
+        assert len(hash_result) == 128  # SHA512 is 128 hex characters
+    
+    def test_compute_all_hashes(self):
+        """Test computing all supported hashes"""
+        data = "test_string"
+        hashes = HashUtils.compute_all_hashes(data)
+        assert 'md5' in hashes
+        assert 'sha1' in hashes
+        assert 'sha256' in hashes
+        assert 'sha384' in hashes
+        assert 'sha512' in hashes
+    
+    def test_verify_string_hash(self):
+        """Test hash verification"""
+        data = "test_string"
+        hash_value = HashUtils.compute_string_hash(data, 'sha256')
+        assert HashUtils.verify_string_hash(data, hash_value, 'sha256')
+        assert not HashUtils.verify_string_hash("wrong_string", hash_value, 'sha256')
+    
+    def test_compute_file_hash(self):
+        """Test file hash computation"""
+        with tempfile.NamedTemporaryFile(delete=False, mode='w') as f:
+            f.write("test content")
+            temp_file = f.name
+        
+        try:
+            hash_result = HashUtils.compute_file_hash(temp_file, 'sha256')
+            assert hash_result is not None
+            assert len(hash_result) == 64
+        finally:
+            os.unlink(temp_file)
+    
+    def test_verify_file_hash(self):
+        """Test file hash verification"""
+        with tempfile.NamedTemporaryFile(delete=False, mode='w') as f:
+            f.write("test content")
+            temp_file = f.name
+        
+        try:
+            expected_hash = HashUtils.compute_file_hash(temp_file, 'sha256')
+            assert HashUtils.verify_file_hash(temp_file, expected_hash, 'sha256')
+        finally:
+            os.unlink(temp_file)
+    
+    def test_unsupported_algorithm(self):
+        """Test unsupported algorithm handling"""
+        result = HashUtils.compute_string_hash("test", "invalid_algo")
+        assert result is None
+    
+    def test_get_supported_algorithms(self):
+        """Test getting supported algorithms"""
+        algos = HashUtils.get_supported_algorithms()
+        assert 'sha256' in algos
+        assert 'md5' in algos
+        assert isinstance(algos, list)
+    
+    def test_file_not_found(self):
+        """Test handling of missing files"""
+        result = HashUtils.compute_file_hash("/nonexistent/file", 'sha256')
+        assert result is None
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])
+
+================================================================================
+FILE 17: tests/test_password_analyzer.py
+================================================================================
+
+"""Tests for password analyzer module"""
+
+import pytest
+from cybersecurity_toolkit.analysis import PasswordAnalyzer
+
+
+class TestPasswordAnalyzer:
+    """Test cases for PasswordAnalyzer"""
+    
+    def setup_method(self):
+        """Setup test fixtures"""
+        self.analyzer = PasswordAnalyzer()
+    
+    def test_weak_password(self):
+        """Test weak password detection"""
+        result = self.analyzer.analyze('password')
+        assert result['score'] < 30
+        assert result['strength'] in ['Very Weak', 'Weak']
+    
+    def test_common_password(self):
+        """Test common password detection"""
+        result = self.analyzer.analyze('123456')
+        assert result['score'] == 0
+        assert 'commonly used' in ' '.join(result['issues']).lower()
+    
+    def test_strong_password(self):
+        """Test strong password detection"""
+        result = self.analyzer.analyze('MySecureP@ssw0rd!')
+        assert result['score'] > 50
+        assert result['strength'] in ['Good', 'Strong']
+    
+    def test_length_feedback(self):
+        """Test length feedback"""
+        result = self.analyzer.analyze('short')
+        assert 'short' in ' '.join(result['issues']).lower()
+    
+    def test_uppercase_feedback(self):
+        """Test uppercase feedback"""
+        result = self.analyzer.analyze('lowercase123')
+        assert result['has_uppercase'] is False
+        assert 'uppercase' in ' '.join(result['feedback']).lower()
+    
+    def test_digit_detection(self):
+        """Test digit detection"""
+        result = self.analyzer.analyze('NoDigits!')
+        assert result['has_digits'] is False
+        assert 'number' in ' '.join(result['feedback']).lower()
+    
+    def test_special_char_detection(self):
+        """Test special character detection"""
+        result = self.analyzer.analyze('NoSpecial123')
+        assert result['has_special_chars'] is False
+    
+    def test_keyboard_pattern_detection(self):
+        """Test keyboard pattern detection"""
+        result = self.analyzer.analyze('Qwerty123!')
+        assert 'keyboard pattern' in ' '.join(result['issues']).lower()
+    
+    def test_repeated_chars_detection(self):
+        """Test repeated character detection"""
+        result = self.analyzer.analyze('Passs123!')
+        assert 'repeated' in ' '.join(result['issues']).lower()
+    
+    def test_sequential_number_detection(self):
+        """Test sequential number detection"""
+        result = self.analyzer.analyze('Pass1234!')
+        assert 'sequential' in ' '.join(result['issues']).lower()
+    
+    def test_entropy_calculation(self):
+        """Test entropy calculation"""
+        result = self.analyzer.analyze('VeryLongPasswordWith123!@#')
+        assert result['entropy'] > 0
+    
+    def test_generate_recommendations(self):
+        """Test recommendation generation"""
+        analysis = self.analyzer.analyze('weak')
+        recommendations = PasswordAnalyzer.generate_recommendations(analysis)
+        assert isinstance(recommendations, list)
+        assert len(recommendations) > 0
+    
+    def test_check_breach_wordlist_builtin(self):
+        """Test built-in wordlist check"""
+        is_breached = self.analyzer.check_breach_wordlist('password')
+        assert is_breached is True
+        
+        is_breached = self.analyzer.check_breach_wordlist('UniqueP@ss123!')
+        assert is_breached is False
+    
+    def test_password_length_attribute(self):
+        """Test password length in analysis"""
+        result = self.analyzer.analyze('TestPassword123!')
+        assert result['length'] == len('TestPassword123!')
+    
+    def test_all_character_types(self):
+        """Test password with all character types"""
+        result = self.analyzer.analyze('MySecureP@ss123')
+        assert result['has_uppercase'] is True
+        assert result['has_lowercase'] is True
+        assert result['has_digits'] is True
+        assert result['has_special_chars'] is True
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])
+
+================================================================================
+FILE 18: examples/scan_network.py
+================================================================================
+
+"""Example: Port Scanning and Network Reconnaissance"""
+
+from cybersecurity_toolkit.network import PortScanner, IPUtils
+
+
+def example_basic_scan():
+    """Basic port scanning example"""
+    print("=" * 60)
+    print("Port Scanning Example")
+    print("=" * 60)
+    
+    scanner = PortScanner(timeout=2)
+    
+    # Define common ports
+    common_ports = [22, 80, 443, 3306, 5432, 27017, 8080]
+    
+    print(f"\nScanning localhost on ports: {common_ports}")
+    print("Note: Adjust host and ports for your network\n")
+    
+    # Scan localhost
+    results = scanner.scan('127.0.0.1', common_ports[:3])  # Scan first 3 ports
+    
+    for port, status in sorted(results.items()):
+        service = scanner.get_service_name(port)
+        print(f"Port {port:5d} ({service:15s}): {status}")
+
+
+def example_ip_utilities():
+    """IP utility examples"""
+    print("\n" + "=" * 60)
+    print("IP Utility Examples")
+    print("=" * 60)
+    
+    # IP validation
+    print("\n1. IP Validation:")
+    test_ips = ['192.168.1.1', '::1', '256.1.1.1', 'not.an.ip']
+    for ip in test_ips:
+        is_valid = IPUtils.is_valid_ip(ip)
+        print(f"  {ip:20s} -> Valid: {is_valid}")
+    
+    # IP classification
+    print("\n2. IP Classification:")
+    ips_to_classify = ['192.168.1.1', '127.0.0.1', '8.8.8.8', '::1']
+    for ip in ips_to_classify:
+        is_private = IPUtils.is_private_ip(ip)
+        is_loopback = IPUtils.is_loopback(ip)
+        is_ipv4 = IPUtils.is_ipv4(ip)
+        print(f"  {ip:20s} -> Private: {is_private:5} | Loopback: {is_loopback:5} | IPv4: {is_ipv4}")
+    
+    # Network information
+    print("\n3. Network Information (192.168.1.0/24):")
+    network_info = IPUtils.get_network_info('192.168.1.0/24')
+    if network_info:
+        for key, value in network_info.items():
+            print(f"  {key:15s}: {value}")
+    
+    # Port range parsing
+    print("\n4. Port Range Parsing (80,443,8000-8003):")
+    ports = IPUtils.parse_port_range('80,443,8000-8003')
+    print(f"  Parsed ports: {sorted(ports)}")
+
+
+def example_port_range_scan():
+    """Scan a range of ports"""
+    print("\n" + "=" * 60)
+    print("Port Range Scanning Example")
+    print("=" * 60)
+    
+    scanner = PortScanner(timeout=1)
+    
+    print("\nScanning port range 8000-8005 on localhost...")
+    results = scanner.scan_range('127.0.0.1', 8000, 8005, threads=5)
+    
+    print("\nResults:")
+    for port in sorted(results.keys()):
+        status = results[port]
+        print(f"  Port {port}: {status}")
+
+
+if __name__ == '__main__':
+    example_basic_scan()
+    example_ip_utilities()
+    example_port_range_scan()
+    
+    print("\n" + "=" * 60)
+    print("Examples completed!")
+    print("=" * 60)
+    print("\nNote: For actual security testing, ensure you have")
+    print("proper authorization to scan target systems.")
+
+================================================================================
+FILE 19: examples/analyze_password.py
+================================================================================
+
+"""Example: Password Analysis and Security Assessment"""
+
+from cybersecurity_toolkit.analysis import PasswordAnalyzer
+
+
+def analyze_password(password):
+    """Analyze a single password"""
+    analyzer = PasswordAnalyzer()
+    result = analyzer.analyze(password)
+    
+    print(f"\nPassword Analysis: {'*' * len(password)}")
+    print("-" * 50)
+    print(f"Score:              {result['score']}/100")
+    print(f"Strength:           {result['strength']}")
+    print(f"Length:             {result['length']}")
+    print(f"Entropy:            {result['entropy']}")
+    
+    print(f"\nCharacter Types:")
+    print(f"  Uppercase letters: {result['has_uppercase']}")
+    print(f"  Lowercase letters: {result['has_lowercase']}")
+    print(f"  Numbers:           {result['has_digits']}")
+    print(f"  Special chars:     {result['has_special_chars']}")
+    
+    if result['issues']:
+        print(f"\nIssues Found:")
+        for issue in result['issues']:
+            print(f"  ✗ {issue}")
+    
+    if result['feedback']:
+        print(f"\nFeedback:")
+        for item in result['feedback']:
+            print(f"  → {item}")
+    
+    # Generate recommendations
+    recommendations = PasswordAnalyzer.generate_recommendations(result)
+    if recommendations:
+        print(f"\nRecommendations:")
+        for rec in recommendations:
+            print(f"  • {rec}")
+    
+    # Check against breach wordlist
+    is_breached = analyzer.check_breach_wordlist(password)
+    print(f"\nBreach Status:      {'BREACHED' if is_breached else 'SAFE'}")
+
+
+def example_weak_passwords():
+    """Analyze examples of weak passwords"""
+    print("=" * 60)
+    print("Weak Password Examples")
+    print("=" * 60)
+    
+    weak_passwords = [
+        'password',
+        '123456',
+        'qwerty',
+        'admin',
+        'letmein',
+    ]
+    
+    for pwd in weak_passwords:
+        analyze_password(pwd)
+        print()
+
+
+def example_medium_passwords():
+    """Analyze examples of medium strength passwords"""
+    print("=" * 60)
+    print("Medium Strength Password Examples")
+    print("=" * 60)
+    
+    medium_passwords = [
+        'MyPassword123',
+        'Welcome2024',
+        'SecurePass99',
+    ]
+    
+    for pwd in medium_passwords:
+        analyze_password(pwd)
+        print()
+
+
+def example_strong_passwords():
+    """Analyze examples of strong passwords"""
+    print("=" * 60)
+    print("Strong Password Examples")
+    print("=" * 60)
+    
+    strong_passwords = [
+        'MySecureP@ss123!',
+        'Kx9#mL2$pQwRt5^vY',
+        'UniqPass2024!@#$',
+    ]
+    
+    for pwd in strong_passwords:
+        analyze_password(pwd)
+        print()
+
+
+def example_interactive():
+    """Interactive password analyzer"""
+    print("=" * 60)
+    print("Interactive Password Analyzer")
+    print("=" * 60)
+    print("Enter a password to analyze (or 'quit' to exit):")
+    print("(Passwords are only analyzed locally and not stored)\n")
+    
+    while True:
+        try:
+            password = input("Enter password: ")
+            if password.lower() == 'quit':
+                break
+            if password:
+                analyze_password(password)
+                print()
+        except KeyboardInterrupt:
+            print("\n\nExiting...")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+
+
+if __name__ == '__main__':
+    example_weak_passwords()
+    example_medium_passwords()
+    example_strong_passwords()
+    
+    print("=" * 60)
+    print("Examples completed!")
+    print("=" * 60)
+    print("\nBest Practices for Password Security:")
+    print("  • Use at least 12 characters")
+    print("  • Mix uppercase, lowercase, numbers, and symbols")
+    print("  • Avoid common words and patterns")
+    print("  • Use unique passwords for each account")
+    print("  • Consider using a password manager")
+
+================================================================================
+FILE 20: examples/validate_certificates.py
+================================================================================
+
+"""Example: SSL/TLS Certificate Validation"""
+
+from cybersecurity_toolkit.crypto import SSLValidator, HashUtils
+
+
+def example_basic_validation():
+    """Basic certificate validation example"""
+    print("=" * 60)
+    print("SSL/TLS Certificate Validation Example")
+    print("=" * 60)
+    
+    validator = SSLValidator()
+    
+    # Validate certificate for popular websites
+    hosts = [
+        'google.com',
+        'github.com',
+        'example.com',
+    ]
+    
+    print("\nValidating SSL certificates for public hosts...\n")
+    
+    for hostname in hosts:
+        print(f"Checking: {hostname}")
+        print("-" * 50)
+        
+        cert_info = validator.validate(hostname, 443)
+        
+        if cert_info:
+            print(f"Valid:              {cert_info['is_valid']}")
+            
+            if 'subject' in cert_info and cert_info['subject']:
+                subject = cert_info['subject']
+                cn = subject.get('commonName', 'N/A')
+                print(f"Common Name:        {cn}")
+            
+            if 'issuer' in cert_info and cert_info['issuer']:
+                issuer = cert_info['issuer']
+                issuer_cn = issuer.get('commonName', 'N/A')
+                print(f"Issuer:             {issuer_cn}")
+            
+            print(f"Issued Date:        {cert_info.get('issued_date', 'N/A')}")
+            print(f"Expiry Date:        {cert_info.get('expiry_date', 'N/A')}")
+            
+            if cert_info.get('san'):
+                print(f"Alternative Names:  {', '.join(cert_info['san'][:3])}")
+            
+            if cert_info.get('validity_issues'):
+                print(f"Issues:")
+                for issue in cert_info['validity_issues']:
+                    print(f"  ⚠ {issue}")
+        else:
+            print("Could not retrieve certificate information")
+        
+        print()
+
+
+def example_protocol_check():
+    """Check SSL/TLS protocol version"""
+    print("=" * 60)
+    print("Protocol Version Check")
+    print("=" * 60)
+    
+    validator = SSLValidator()
+    hosts = ['google.com', 'github.com', 'example.com']
+    
+    print("\nChecking SSL/TLS protocol versions...\n")
+    
+    for hostname in hosts:
+        print(f"{hostname:30s} -> ", end='', flush=True)
+        protocol = validator.get_protocol_version(hostname, 443)
+        if protocol:
+            print(f"{protocol}")
+        else:
+            print("Could not determine")
+
+
+def example_cipher_check():
+    """Check cipher suites"""
+    print("\n" + "=" * 60)
+    print("Cipher Suite Check")
+    print("=" * 60)
+    
+    validator = SSLValidator()
+    hosts = ['google.com', 'github.com', 'example.com']
+    
+    print("\nChecking cipher suites in use...\n")
+    
+    for hostname in hosts:
+        print(f"Host: {hostname}")
+        print("-" * 50)
+        
+        cipher_info = validator.get_cipher_suites(hostname, 443)
+        
+        if cipher_info:
+            print(f"Protocol:     {cipher_info['protocol']}")
+            cipher = cipher_info.get('cipher')
+            if cipher:
+                cipher_name, cipher_protocol, cipher_bits = cipher
+                print(f"Cipher:       {cipher_name}")
+                print(f"Bits:         {cipher_bits}")
+        else:
+            print("Could not retrieve cipher information")
+        
+        print()
+
+
+def example_hash_validation():
+    """Example of validating certificate hashes"""
+    print("=" * 60)
+    print("Certificate Hash Computation")
+    print("=" * 60)
+    
+    # Example certificate data (simplified)
+    cert_data = "CERTIFICATE_CONTENT_HERE"
+    
+    print("\nComputing hashes for certificate validation...\n")
+    
+    hashes = HashUtils.compute_all_hashes(cert_data)
+    
+    print("Certificate Hashes:")
+    for algorithm, hash_value in hashes.items():
+        print(f"  {algorithm.upper():10s}: {hash_value[:32]}...")
+
+
+def example_certificate_monitoring():
+    """Example of monitoring certificate expiration"""
+    print("\n" + "=" * 60)
+    print("Certificate Expiration Monitoring")
+    print("=" * 60)
+    
+    validator = SSLValidator()
+    monitored_hosts = [
+        'google.com',
+        'github.com',
+        'example.com',
+    ]
+    
+    print("\nMonitoring certificate expiration dates...\n")
+    
+    for hostname in monitored_hosts:
+        cert_info = validator.validate(hostname, 443)
+        
+        if cert_info:
+            print(f"{hostname:30s}")
+            expiry = cert_info.get('expiry_date', 'Unknown')
+            print(f"  Expiry: {expiry}")
+            
+            issues = cert_info.get('validity_issues', [])
+            if issues:
+                for issue in issues:
+                    print(f"  ⚠  {issue}")
+            else:
+                print(f"  ✓ Certificate is valid")
+        print()
+
+
+if __name__ == '__main__':
+    try:
+        example_basic_validation()
+        example_protocol_check()
+        example_cipher_check()
+        example_hash_validation()
+        example_certificate_monitoring()
+    except Exception as e:
+        print(f"\nError running examples: {e}")
+        print("Make sure you have internet connectivity for certificate validation")
+    
+    print("\n" + "=" * 60)
+    print("Examples completed!")
+    print("=" * 60)
+    print("\nCertificate Security Tips:")
+    print("  • Regularly monitor certificate expiration dates")
+    print("  • Use certificates from trusted Certificate Authorities")
+    print("  • Implement HSTS for secure connections")
+    print("  • Use strong cipher suites (TLS 1.2+)")
+    print("  • Rotate certificates before expiration")
